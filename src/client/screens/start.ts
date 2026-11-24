@@ -109,7 +109,7 @@ export function startScreen(
     h(
       'main',
       { class: 'screen start' },
-      h('h1', { class: 'logo' }, '두더지 ', h('span', {}, '친구방')),
+      h('h1', { class: 'logo' }, '치고', h('span', {}, '박고')),
       mascot,
       h('label', { class: 'field' }, h('span', {}, '닉네임'), input),
       h(
