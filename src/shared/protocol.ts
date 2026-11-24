@@ -13,6 +13,8 @@ export interface PlayerInfo {
   score: number;
   /** 새로고침 등으로 잠시 끊긴 상태면 false */
   connected: boolean;
+  /** 대기실에서 [준비]를 눌렀는지 (방장은 상관없음) */
+  ready: boolean;
 }
 
 export interface RankEntry {
@@ -44,6 +46,9 @@ export type ClientMsg =
   | { type: 'rejoin'; code: string; token: string }
   | { type: 'leave_room' }
   | { type: 'update_avatar'; avatar: Avatar }
+  /** 대기실에서 준비 / 준비 취소 */
+  | { type: 'set_ready'; ready: boolean }
+  /** 방장만. 연결된 참가자 전원이 준비해야 시작됨 */
   | { type: 'start_game' }
   | { type: 'whack'; moleId: number }
   /** 시계 맞추기: t는 보낸 순간의 클라이언트 시각 */

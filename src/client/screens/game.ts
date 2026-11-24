@@ -38,24 +38,27 @@ interface Effect {
   color?: string;
   /** spark 입자 수 */
   n?: number;
+  /** text 글자 크기 (게임판 도트 단위, 기본 9) */
+  size?: number;
 }
 
 const holeCenter = (hole: number) => ({ x: (hole % 3) * CELL + CELL / 2, y: Math.floor(hole / 3) * CELL + 18 });
 
 export function gameScreen(root: HTMLElement, go: (r: Route) => void, route: { mode: GameMode }): () => void {
   const mode = route.mode;
+  const inRoom = mode !== 'solo';
   let players: PlayerInfo[];
   let session: GameSession;
+  if (inRoom && !getRoom()) {
+    queueMicrotask(() => go({ name: 'start' }));
+    return () => {};
+  }
   if (mode === 'multi') {
-    const room = getRoom();
-    if (!room) {
-      queueMicrotask(() => go({ name: 'start' }));
-      return () => {};
-    }
+    const room = getRoom()!;
     session = new NetSession();
     players = room.players.filter((p) => p.connected).map((p) => ({ ...p, score: 0 }));
   } else {
-    const me: PlayerInfo = { id: 'me', nickname: state.nickname, avatar: state.avatar, score: 0, connected: true };
+    const me: PlayerInfo = { id: 'me', nickname: state.nickname, avatar: state.avatar, score: 0, connected: true, ready: true };
     players = [me];
     session = new LocalSession(me);
   }
@@ -84,6 +87,19 @@ export function gameScreen(root: HTMLElement, go: (r: Route) => void, route: { m
   };
   const scoreList = h('ul', { class: 'scores' });
 
+  // 방에서 연습 중: 대기실 상황을 한 줄로 보여 주고, 친구가 들어오면 알림
+  const practiceBar = h('div', { class: 'practice-bar', role: 'status' });
+  const renderPracticeBar = (news?: string) => {
+    const room = getRoom();
+    if (!room) return;
+    const others = room.players.filter((p) => p.id !== room.myId && p.connected).length;
+    practiceBar.classList.toggle('news', !!news);
+    practiceBar.textContent =
+      news ?? `🏠 방 ${room.code}에서 연습 중 · ${others ? `친구 ${others}명 대기 중` : '친구가 들어오면 알려 줄게요'}`;
+  };
+  let knownIds = new Set(getRoom()?.players.map((p) => p.id) ?? []);
+  let newsTimer = 0;
+
   const renderScores = () => {
     const sorted = [...players].sort((a, b) => Number(b.connected) - Number(a.connected) || b.score - a.score);
     scoreList.replaceChildren(
@@ -109,13 +125,14 @@ export function gameScreen(root: HTMLElement, go: (r: Route) => void, route: { m
         { class: 'hud' },
         h(
           'button',
-          { class: 'btn tiny', onclick: () => go(mode === 'multi' ? { name: 'lobby' } : { name: 'start' }) },
-          mode === 'multi' ? '대기실' : '그만',
+          { class: 'btn tiny', onclick: () => go(inRoom ? { name: 'lobby' } : { name: 'start' }) },
+          inRoom ? '대기실' : '그만',
         ),
         h('div', { class: 'hud-mid' }, h('small', {}, '남은 시간'), timerEl),
         muteButton(),
         h('div', { class: 'hud-right' }, h('small', {}, '내 점수'), myScoreEl, comboEl),
       ),
+      mode === 'practice' ? practiceBar : null,
       scoreList,
       board,
       legend(),
@@ -167,6 +184,11 @@ export function gameScreen(root: HTMLElement, go: (r: Route) => void, route: { m
         const { x, y } = holeCenter(m.hole);
         const bad = msg.hitKind === 'bomb' || msg.hitKind === 'decoy';
         const now = performance.now();
+        // 맞은 두더지의 한마디 (폭탄은 두더지가 아니라서 제외)
+        if (msg.hitKind !== 'bomb') {
+          const side = m.hole % 3 === 2 ? -1 : 1; // 오른쪽 끝 구멍은 왼쪽에 표시
+          effects.push({ kind: 'text', x: x + side * 9, y: y - 9, at: now, text: '샤갈!', color: '#ffe3e3', size: 6 });
+        }
         if (msg.hitKind === 'gold') effects.push({ kind: 'spark', x, y: y - 8, at: now, color: '#ffe066', n: 10 });
         else if (msg.hitKind === 'flash') effects.push({ kind: 'spark', x, y: y - 8, at: now, color: '#bfe0ff', n: 8 });
         else if (!bad) effects.push({ kind: 'spark', x, y: y - 2, at: now, color: '#8a6040', n: 6 });
@@ -215,16 +237,35 @@ export function gameScreen(root: HTMLElement, go: (r: Route) => void, route: { m
         break;
     }
   });
-  if (mode === 'solo') session.send({ type: 'start_game' });
+  if (mode !== 'multi') session.send({ type: 'start_game' });
 
   // 같이 하기: 연결이 끊기면(새로고침 포함) 대기실로 — 판이 끝나면 결과는 같이 받는다
+  // 방에서 연습: 방장이 진짜 게임을 시작하면 바로 합류, 친구가 들어오면 알림
   const offRoom =
     mode === 'multi'
       ? onRoomChange((e) => {
           if (e.kind === 'lost') go({ name: 'start', message: e.message, error: true });
           else if (e.kind === 'reconnecting') go({ name: 'lobby' });
         })
-      : () => {};
+      : mode === 'practice'
+        ? onRoomChange((e) => {
+            if (e.kind === 'lost') go({ name: 'start', message: e.message, error: true });
+            else if (e.kind === 'game_start') go({ name: 'game', mode: 'multi' });
+            else if (e.kind === 'update') {
+              const room = getRoom();
+              const joined = room?.players.filter((p) => !knownIds.has(p.id)) ?? [];
+              knownIds = new Set(room?.players.map((p) => p.id) ?? []);
+              if (joined.length) {
+                renderPracticeBar(`👋 ${joined.map((p) => p.nickname).join(', ')}님이 들어왔어요!`);
+                sfx.join();
+                buzz([20, 60, 20]);
+                clearTimeout(newsTimer);
+                newsTimer = window.setTimeout(() => renderPracticeBar(), 4000);
+              } else if (!practiceBar.classList.contains('news')) renderPracticeBar();
+            }
+          })
+        : () => {};
+  if (mode === 'practice') renderPracticeBar();
 
   // ---------- 입력 ----------
 
@@ -401,6 +442,7 @@ export function gameScreen(root: HTMLElement, go: (r: Route) => void, route: { m
     document.body.classList.remove('in-game');
     void wakeLock?.release().catch(() => {});
     offRoom();
+    clearTimeout(newsTimer);
     session.close();
   };
 }
@@ -534,9 +576,10 @@ function drawEffects(ctx: CanvasRenderingContext2D, effects: Effect[], now: numb
       }
       case 'text': {
         ctx.globalAlpha = 1 - Math.max(0, p - 0.6) / 0.4;
-        ctx.font = 'bold 9px system-ui, sans-serif';
+        const size = e.size ?? 9;
+        ctx.font = `bold ${size}px system-ui, sans-serif`;
         ctx.textAlign = 'center';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = size < 8 ? 1.5 : 2;
         ctx.strokeStyle = '#2a1a10';
         const ty = y - Math.round(p * 8);
         ctx.strokeText(e.text ?? '', x, ty);

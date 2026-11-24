@@ -28,6 +28,8 @@ interface Player {
   nickname: string;
   avatar: Avatar;
   score: number;
+  /** 대기실 [준비] 상태. 판이 끝나면 모두 해제 */
+  ready: boolean;
   send: Send | null; // null = 연결 끊김
   removeTimer?: ReturnType<typeof setTimeout>;
 }
@@ -63,7 +65,7 @@ function newCode(): string {
 const fail = (conn: Conn, code: ErrorCode, message: string) => conn.send({ type: 'error', code, message });
 
 function info(p: Player): PlayerInfo {
-  return { id: p.id, nickname: p.nickname, avatar: p.avatar, score: p.score, connected: p.send !== null };
+  return { id: p.id, nickname: p.nickname, avatar: p.avatar, score: p.score, connected: p.send !== null, ready: p.ready };
 }
 
 function broadcast(room: Room, msg: ServerMsg) {
@@ -91,7 +93,15 @@ function attach(conn: Conn, room: Room, player: Player) {
 }
 
 function newPlayer(nickname: string, avatar: unknown): Player {
-  return { id: randomUUID().slice(0, 8), token: randomUUID(), nickname, avatar: sanitizeAvatar(avatar), score: 0, send: null };
+  return {
+    id: randomUUID().slice(0, 8),
+    token: randomUUID(),
+    nickname,
+    avatar: sanitizeAvatar(avatar),
+    score: 0,
+    ready: false,
+    send: null,
+  };
 }
 
 function removePlayer(room: Room, player: Player) {
@@ -143,12 +153,24 @@ export function handleMessage(conn: Conn, msg: ClientMsg) {
       if (!room) return fail(conn, 'room_not_found', '방을 찾을 수 없어요. 코드를 확인해 주세요.');
       if (!nickname) return fail(conn, 'bad_nickname', '닉네임을 입력해 주세요.');
       if (conn.room === room) return; // 이미 이 방에 있음
-      if (room.phase !== 'lobby') return fail(conn, 'game_started', '이미 게임이 시작된 방이에요. 끝난 뒤에 다시 들어와 주세요.');
-      if (room.players.length >= MAX_PLAYERS) return fail(conn, 'room_full', `방이 가득 찼어요. (최대 ${MAX_PLAYERS}명)`);
       const key = nicknameKey(nickname);
-      if (room.players.some((p) => nicknameKey(p.nickname) === key)) {
+      const same = room.players.find((p) => nicknameKey(p.nickname) === key);
+      if (same && !same.send) {
+        // 같은 닉네임 자리가 "연결 끊김" 상태 → 본인이 다른 브라우저(예: 카톡→크롬)로 돌아온 것. 그 자리를 이어받는다.
+        leave(conn);
+        same.avatar = sanitizeAvatar(msg.avatar);
+        if (room.phase === 'playing') {
+          room.game?.removePlayer(same.id);
+          same.score = 0;
+        }
+        log(`자리 이어받기 ${room.code} ${same.nickname}`);
+        return attach(conn, room, same);
+      }
+      if (same) {
         return fail(conn, 'nickname_taken', `'${nickname}'은(는) 이미 방에 있는 닉네임이에요. 다른 닉네임으로 들어와 주세요.`);
       }
+      if (room.phase !== 'lobby') return fail(conn, 'game_started', '이미 게임이 시작된 방이에요. 끝난 뒤에 다시 들어와 주세요.');
+      if (room.players.length >= MAX_PLAYERS) return fail(conn, 'room_full', `방이 가득 찼어요. (최대 ${MAX_PLAYERS}명)`);
       leave(conn);
       const player = newPlayer(nickname, msg.avatar);
       room.players.push(player);
@@ -178,11 +200,23 @@ export function handleMessage(conn: Conn, msg: ClientMsg) {
       return broadcastState(conn.room);
     }
 
-    case 'start_game': {
+    case 'set_ready': {
       if (!conn.room || !conn.player) return fail(conn, 'not_in_room', '방에 들어가 있지 않아요.');
-      if (conn.room.hostId !== conn.player.id) return fail(conn, 'not_host', '방장만 시작할 수 있어요.');
-      if (conn.room.phase !== 'lobby') return fail(conn, 'game_started', '이미 게임이 진행 중이에요.');
-      return startGame(conn.room);
+      if (conn.room.phase !== 'lobby') return;
+      conn.player.ready = msg.ready === true;
+      return broadcastState(conn.room);
+    }
+
+    case 'start_game': {
+      const room = conn.room;
+      if (!room || !conn.player) return fail(conn, 'not_in_room', '방에 들어가 있지 않아요.');
+      if (room.hostId !== conn.player.id) return fail(conn, 'not_host', '방장만 시작할 수 있어요.');
+      if (room.phase !== 'lobby') return fail(conn, 'game_started', '이미 게임이 진행 중이에요.');
+      const waiting = notReady(room);
+      if (waiting.length) {
+        return fail(conn, 'not_ready', `아직 준비 안 한 사람이 있어요: ${waiting.map((p) => p.nickname).join(', ')}`);
+      }
+      return startGame(room);
     }
 
     case 'whack': {
@@ -196,6 +230,11 @@ export function handleMessage(conn: Conn, msg: ClientMsg) {
     default:
       return fail(conn, 'bad_request', '알 수 없는 요청이에요.');
   }
+}
+
+/** 시작을 막고 있는 사람: 연결돼 있는데 준비 안 한 참가자 (방장 제외, 연결 끊긴 사람은 기다리지 않음) */
+function notReady(room: Room): Player[] {
+  return room.players.filter((p) => p.id !== room.hostId && p.send && !p.ready);
 }
 
 /** 지금 연결된 사람 전원으로 한 판 시작 */
@@ -221,6 +260,7 @@ function startGame(room: Room) {
 function endGame(room: Room, scores: Map<string, number>) {
   room.game = undefined;
   room.phase = 'lobby';
+  room.players.forEach((p) => (p.ready = false)); // 다음 판은 다시 준비
   const ranking = rankPlayers(
     room.players.filter((p) => scores.has(p.id)).map((p) => ({ ...info(p), score: scores.get(p.id)! })),
   );

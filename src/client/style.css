@@ -442,6 +442,26 @@ body.in-game { overscroll-behavior: none; }
   .legend canvas { width: 20px; height: 20px; }
 }
 
+/* ---------- 준비 / 대기실 연습 ---------- */
+.start-box { display: flex; flex-direction: column; gap: 4px; }
+.start-box .btn { width: 100%; }
+.waiting.small { font-size: 13px; margin: 2px 0 0; }
+.btn.ready-on { background: #8fd06f; }
+.tag.ready { background: #8fd06f; }
+.tag.notready { background: #fff; color: var(--ink-soft); }
+.practice-btn { width: 100%; }
+.practice-bar {
+  margin-top: 8px;
+  padding: 6px 10px;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+}
+.practice-bar.news { background: var(--accent); animation: pop 0.35s; }
+
 /* ---------- 홈 화면에 추가 ---------- */
 .install { margin-top: 16px; }
 .install:empty { display: none; }

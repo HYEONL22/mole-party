@@ -28,8 +28,14 @@ const variant = (base: string[], changes: Record<number, string>) => base.map((r
 const hitRows = (base: string[]) =>
   variant(base, { 4: '.DMMMMMMMMMMMMD.', 5: '.DMEEEMMMMEEEMD.', 9: 'DMMMLLWWWWLLMMMD' });
 
-/** 가짜 두더지: 찌푸린 눈썹 + 빨간 코 (일반 두더지와 헷갈리게) */
-const DECOY_ROWS = variant(MOLE_ROWS, { 3: '.DMEEMMMMMMEEMD.', 6: '.DMMMMMRRMMMMMD.' });
+/** 가짜 두더지: 빨간 악마 뿔 + 찌푸린 눈썹 + 빨간 코 */
+const DECOY_ROWS = variant(MOLE_ROWS, {
+  0: '.R..DDDDDDDD..R.',
+  1: '.RRDMMMMMMMMDRR.',
+  2: '.RDMMMMMMMMMMDR.',
+  3: '.DMEEMMMMMMEEMD.',
+  6: '.DMMMMMRRMMMMMD.',
+});
 
 /** 번개 두더지: 이마에 번개 */
 const FLASH_ROWS = variant(MOLE_ROWS, {
@@ -60,7 +66,8 @@ const BOMB_ROWS = [
 const COMMON = { E: '#1b1b22', W: '#ffffff', P: '#f07890' };
 const BROWN = { ...COMMON, D: '#3b2416', M: '#8b5a3c', m: '#6e4429', L: '#e8c4a0' };
 const GOLD = { ...COMMON, D: '#7a5a10', M: '#f2c230', m: '#c9971c', L: '#fff1b8' };
-const DECOY = { ...BROWN, R: '#e0352b' };
+// 몸 색도 살짝 붉게 — 일반 두더지와 한눈에 구별되도록
+const DECOY = { ...BROWN, M: '#93503f', m: '#713b30', R: '#ff3b2f' };
 const FLASH = { ...COMMON, D: '#24304a', M: '#7d93bd', m: '#5d6f94', L: '#e3ecfa', Y: '#ffe14a' };
 const BOMB = { K: '#26262c', W: '#8c8c98', a: '#9aa0aa', F: '#b08850', Y: '#ffd84a', R: '#ff4b3a' };
 

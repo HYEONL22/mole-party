@@ -49,7 +49,7 @@ net.on((msg) => {
     emit({ kind: 'update' });
   } else if (msg.type === 'error' && msg.code === 'not_in_room' && room) {
     drop(msg.message);
-  } else if (msg.type === 'error' && room && (msg.code === 'not_host' || msg.code === 'game_started')) {
+  } else if (msg.type === 'error' && room && (msg.code === 'not_host' || msg.code === 'game_started' || msg.code === 'not_ready')) {
     emit({ kind: 'notice', message: msg.message });
   } else if (msg.type === 'game_start' && room) {
     gameLog = [msg];
@@ -64,6 +64,10 @@ net.on((msg) => {
 
 export function startGame() {
   net.send({ type: 'start_game' });
+}
+
+export function setReady(ready: boolean) {
+  net.send({ type: 'set_ready', ready });
 }
 
 net.onClose(() => {
@@ -214,4 +218,15 @@ if (typeof document !== 'undefined') {
     if (net.isOpen) net.checkAlive();
     else if (!reconnecting) void reconnect();
   });
+}
+
+/**
+ * 무료 서버(Render)는 15분 동안 들어오는 요청이 없으면 잠들고, 그러면 방이 사라진다.
+ * 방에 있는 동안(친구 기다리는 중 포함) 4분마다 가벼운 요청을 보내 깨어 있게 한다.
+ */
+const KEEPALIVE_MS = 4 * 60_000;
+if (typeof window !== 'undefined') {
+  setInterval(() => {
+    if (room) void fetch('/healthz', { cache: 'no-store' }).catch(() => {});
+  }, KEEPALIVE_MS);
 }

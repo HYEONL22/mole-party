@@ -19,7 +19,9 @@ export function resultScreen(
         : winners[0]?.id === route.myId
           ? '내가 1등! 🎉'
           : `${winners[0]?.nickname} 1등!`
-      : '결과';
+      : route.mode === 'practice'
+        ? '연습 결과'
+        : '결과';
 
   root.append(
     h(
@@ -57,17 +59,24 @@ export function resultScreen(
               '나가기',
             ),
           )
-        : h(
-            'div',
-            { class: 'btn-col' },
-            h('button', { class: 'btn primary', onclick: () => go({ name: 'game', mode: 'solo' }) }, '다시 하기'),
-            h('button', { class: 'btn', onclick: () => go({ name: 'start' }) }, '나가기'),
-          ),
+        : route.mode === 'practice'
+          ? h(
+              'div',
+              { class: 'btn-col' },
+              h('button', { class: 'btn primary', onclick: () => go({ name: 'game', mode: 'practice' }) }, '다시 연습'),
+              h('button', { class: 'btn', onclick: () => go(getRoom() ? { name: 'lobby' } : { name: 'start' }) }, '대기실로'),
+            )
+          : h(
+              'div',
+              { class: 'btn-col' },
+              h('button', { class: 'btn primary', onclick: () => go({ name: 'game', mode: 'solo' }) }, '다시 하기'),
+              h('button', { class: 'btn', onclick: () => go({ name: 'start' }) }, '나가기'),
+            ),
     ),
   );
 
-  // 결과를 보는 동안 방장이 바로 다음 판을 시작하면 같이 들어간다
-  return multi
+  // 결과를 보는 동안 방장이 바로 다음 판을 시작하면 같이 들어간다 (연습 결과를 보는 중이어도)
+  return route.mode !== 'solo'
     ? onRoomChange((e) => {
         if (e.kind === 'game_start') go({ name: 'game', mode: 'multi' });
         else if (e.kind === 'lost') go({ name: 'start', message: e.message, error: true });

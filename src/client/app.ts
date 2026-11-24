@@ -16,5 +16,5 @@ export type Route =
   | { name: 'game'; mode: GameMode }
   | { name: 'result'; ranking: RankEntry[]; myId: string; mode: GameMode };
 
-/** solo: 혼자 연습 / multi: 방에서 같이 */
-export type GameMode = 'solo' | 'multi';
+/** solo: 혼자 연습 / multi: 방에서 같이 / practice: 방에 머문 채로 혼자 연습 (친구 기다리는 동안) */
+export type GameMode = 'solo' | 'multi' | 'practice';

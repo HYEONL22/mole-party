@@ -32,8 +32,57 @@ export function setMuted(v: boolean) {
   if (master) master.gain.value = v ? 0 : 0.45;
 }
 
-/** 첫 터치/클릭 때 호출 (iOS 사파리 오디오 잠금 해제) */
+/**
+ * 아이폰: 무음(진동) 스위치가 켜져 있으면 Web Audio 소리가 안 난다.
+ * 짧은 무음 <audio>를 한 번 재생해 두면 "미디어 소리"로 취급돼 스위치와 상관없이 들린다.
+ */
+let mediaUnlocked = false;
+function unlockMediaChannel() {
+  if (mediaUnlocked) return;
+  mediaUnlocked = true;
+  try {
+    const nav = navigator as Navigator & { audioSession?: { type: string } };
+    if (nav.audioSession) nav.audioSession.type = 'playback'; // Safari 16.4+
+  } catch {
+    /* 무시 */
+  }
+  try {
+    const a = new Audio(SILENT_WAV);
+    a.setAttribute('playsinline', '');
+    a.volume = 0.01;
+    void a.play().catch(() => (mediaUnlocked = false));
+  } catch {
+    mediaUnlocked = false;
+  }
+}
+
+/** 0.1초짜리 무음 WAV (8kHz, 8bit) */
+const SILENT_WAV = (() => {
+  const n = 800;
+  const bytes = new Uint8Array(44 + n);
+  const dv = new DataView(bytes.buffer);
+  const str = (o: number, s: string) => [...s].forEach((c, i) => (bytes[o + i] = c.charCodeAt(0)));
+  str(0, 'RIFF');
+  dv.setUint32(4, 36 + n, true);
+  str(8, 'WAVEfmt ');
+  dv.setUint32(16, 16, true);
+  dv.setUint16(20, 1, true);
+  dv.setUint16(22, 1, true);
+  dv.setUint32(24, 8000, true);
+  dv.setUint32(28, 8000, true);
+  dv.setUint16(32, 1, true);
+  dv.setUint16(34, 8, true);
+  str(36, 'data');
+  dv.setUint32(40, n, true);
+  bytes.fill(128, 44);
+  let bin = '';
+  bytes.forEach((b) => (bin += String.fromCharCode(b)));
+  return 'data:audio/wav;base64,' + btoa(bin);
+})();
+
+/** 터치/클릭 때 호출 (폰 브라우저 오디오 잠금 해제) */
 export function unlockAudio() {
+  unlockMediaChannel();
   try {
     if (!ctx) {
       const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -53,9 +102,16 @@ export function unlockAudio() {
 }
 
 if (typeof document !== 'undefined') {
-  // 통화·다른 앱 사용 뒤에도 다시 깨울 수 있도록 계속 듣는다
-  document.addEventListener('pointerdown', unlockAudio, { capture: true, passive: true });
-  document.addEventListener('keydown', unlockAudio, { capture: true });
+  // 폰에서는 손가락을 "뗄 때"(pointerup/touchend/click)만 소리 허용 신호로 인정된다.
+  // 누르는 순간(pointerdown)만 들으면 폰에서는 소리가 영영 안 켜짐 → 둘 다 듣는다.
+  // 통화·다른 앱 사용 뒤에도 다시 깨울 수 있도록 계속 듣는다.
+  for (const ev of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) {
+    document.addEventListener(ev, unlockAudio, { capture: true, passive: true });
+  }
+  // 다른 앱에 다녀오면 오디오가 멈춰 있는 경우가 있어 다시 깨운다
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && ctx?.state !== 'running') void ctx?.resume().catch(() => {});
+  });
 }
 
 interface ToneOpts {
@@ -134,6 +190,8 @@ export const sfx = {
     }
   },
   end: () => arp([523, 659, 784, 1047], 0.1, { type: 'triangle', vol: 0.22 }),
+  /** 친구가 방에 들어옴 (딩동) */
+  join: () => arp([1047, 784], 0.14, { type: 'sine', vol: 0.25 }),
 };
 
 /** 진동 (안드로이드만 지원, iOS는 무시됨) */

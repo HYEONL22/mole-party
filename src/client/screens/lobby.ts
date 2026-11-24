@@ -2,7 +2,7 @@ import { MAX_PLAYERS } from '../../shared/protocol';
 import type { Route } from '../app';
 import { avatarElement } from '../avatarRender';
 import { h } from '../dom';
-import { getRoom, inviteLink, isReconnecting, leaveRoom, onRoomChange, startGame } from '../room';
+import { getRoom, inviteLink, isReconnecting, leaveRoom, onRoomChange, setReady, startGame } from '../room';
 
 export function lobbyScreen(root: HTMLElement, go: (r: Route) => void, route: { message?: string }): () => void {
   const notice = h('p', { class: 'hint error', role: 'status' }, route.message ?? '');
@@ -41,7 +41,13 @@ export function lobbyScreen(root: HTMLElement, go: (r: Route) => void, route: { 
             { class: 'tags' },
             p.id === room.hostId ? h('em', { class: 'tag host' }, '👑 방장') : null,
             p.id === room.myId ? h('em', { class: 'tag' }, '나') : null,
-            p.connected ? null : h('em', { class: 'tag away' }, '연결 끊김'),
+            p.connected
+              ? p.id !== room.hostId
+                ? p.ready
+                  ? h('em', { class: 'tag ready' }, '✅ 준비')
+                  : h('em', { class: 'tag notready' }, '준비 중…')
+                : null
+              : h('em', { class: 'tag away' }, '연결 끊김'),
           ),
         ),
       ),
@@ -49,13 +55,57 @@ export function lobbyScreen(root: HTMLElement, go: (r: Route) => void, route: { 
 
     const isHost = room.hostId === room.myId;
     const playing = room.phase === 'playing';
+    const me = room.players.find((p) => p.id === room.myId);
+    // 준비해야 하는 사람 = 연결된 참가자 (방장 제외)
+    const guests = room.players.filter((p) => p.id !== room.hostId && p.connected);
+    const readyCount = guests.filter((p) => p.ready).length;
+    const allReady = readyCount === guests.length;
+
+    let main: HTMLElement;
+    if (playing) {
+      main = h('p', { class: 'waiting playing' }, '🔨 지금 게임 중이에요. 판이 끝나면 결과가 바로 나와요.');
+    } else if (isHost) {
+      main = h(
+        'div',
+        { class: 'start-box' },
+        h(
+          'button',
+          { class: 'btn primary', disabled: !allReady, onclick: () => startGame() },
+          allReady ? '게임 시작' : `준비 기다리는 중 (${readyCount}/${guests.length})`,
+        ),
+        h(
+          'p',
+          { class: 'waiting small' },
+          guests.length === 0
+            ? '혼자서도 시작할 수 있어요. 친구가 들어오면 모두 준비해야 시작돼요.'
+            : allReady
+              ? '모두 준비했어요!'
+              : '친구들이 모두 [준비]를 누르면 시작할 수 있어요.',
+        ),
+      );
+    } else {
+      const ready = !!me?.ready;
+      main = h(
+        'div',
+        { class: 'start-box' },
+        h(
+          'button',
+          { class: 'btn ' + (ready ? 'ready-on' : 'primary'), onclick: () => setReady(!ready) },
+          ready ? '✅ 준비 완료 (누르면 취소)' : '준비',
+        ),
+        h('p', { class: 'waiting small' }, ready ? '방장이 시작하기를 기다리는 중…' : '준비되면 [준비]를 눌러 주세요.'),
+      );
+    }
+
+    const practiceBtn = h(
+      'button',
+      { class: 'btn small practice-btn', onclick: () => go({ name: 'game', mode: 'practice' }) },
+      '🔨 기다리는 동안 혼자 연습',
+    );
     footer.replaceChildren(
-      playing
-        ? h('p', { class: 'waiting playing' }, '🔨 지금 게임 중이에요. 판이 끝나면 결과가 바로 나와요.')
-        : isHost
-          ? h('button', { class: 'btn primary', onclick: () => startGame() }, '게임 시작')
-          : h('p', { class: 'waiting' }, '방장이 시작하기를 기다리는 중…'),
+      main,
       notice,
+      ...(playing ? [] : [practiceBtn]),
       h(
         'div',
         { class: 'btn-row' },
