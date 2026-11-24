@@ -2,6 +2,7 @@ import { ROOM_CODE_RE } from '../../shared/protocol';
 import { state, type Route } from '../app';
 import { avatarElement } from '../avatarRender';
 import { h } from '../dom';
+import { installMode, onInstallChange, promptInstall } from '../install';
 import { createRoom, joinRoom } from '../room';
 import { SPRITES } from '../sprites';
 import { NICKNAME_MAX, cleanNickname, saveNickname } from '../storage';
@@ -10,7 +11,7 @@ export function startScreen(
   root: HTMLElement,
   go: (r: Route) => void,
   route: { code?: string; message?: string; error?: boolean },
-): void {
+): () => void {
   const input = h('input', {
     type: 'text',
     maxlength: NICKNAME_MAX,
@@ -126,7 +127,73 @@ export function startScreen(
         h('div', { class: 'divider' }, '또는'),
         soloBtn,
       ),
+      installBox,
     ),
   );
+  renderInstall();
+  const offInstall = onInstallChange(renderInstall);
   if (route.code) codeInput.focus();
+  return offInstall;
+}
+
+/** 홈 화면에 추가 안내 (이미 앱으로 열었으면 숨김) */
+const installBox = h('div', { class: 'install' });
+
+function renderInstall() {
+  const mode = installMode();
+  const help = h('p', { class: 'install-help' });
+  switch (mode) {
+    case 'prompt':
+      installBox.replaceChildren(
+        h(
+          'button',
+          {
+            class: 'btn small install-btn',
+            onclick: async () => {
+              const ok = await promptInstall();
+              if (ok) help.textContent = '홈 화면에 추가했어요! 이제 아이콘으로 바로 열 수 있어요.';
+            },
+          },
+          '📲 홈 화면에 앱 추가',
+        ),
+        help,
+      );
+      break;
+    case 'ios':
+      installBox.replaceChildren(
+        h(
+          'details',
+          {},
+          h('summary', {}, '📲 홈 화면에 앱으로 추가하기'),
+          h(
+            'ol',
+            {},
+            h('li', {}, 'Safari 아래쪽 ', h('b', {}, '공유 버튼'), ' (네모에 위 화살표)을 누르고'),
+            h('li', {}, h('b', {}, '홈 화면에 추가'), '를 누른 뒤 오른쪽 위 ', h('b', {}, '추가'), '를 누르면 끝!'),
+          ),
+        ),
+      );
+      break;
+    case 'inapp':
+      installBox.replaceChildren(
+        h(
+          'details',
+          {},
+          h('summary', {}, '📲 홈 화면에 앱으로 추가하려면'),
+          h(
+            'p',
+            {},
+            '카카오톡 안에서는 추가할 수 없어요. 오른쪽 아래(또는 위) ',
+            h('b', {}, '⋮ / 공유'),
+            ' 메뉴에서 ',
+            h('b', {}, '다른 브라우저로 열기'),
+            '(아이폰은 Safari로 열기)를 누른 뒤 거기서 추가해 주세요.',
+          ),
+        ),
+      );
+      break;
+    default:
+      // 설치됨 또는 지원 안 함: 안내 없음
+      installBox.replaceChildren();
+  }
 }

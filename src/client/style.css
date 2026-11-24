@@ -441,3 +441,24 @@ body.in-game { overscroll-behavior: none; }
   .legend { margin-top: 6px; gap: 2px 8px; font-size: 12px; }
   .legend canvas { width: 20px; height: 20px; }
 }
+
+/* ---------- 홈 화면에 추가 ---------- */
+.install { margin-top: 16px; }
+.install:empty { display: none; }
+.install-btn { width: 100%; }
+.install-help { margin: 6px 0 0; font-size: 13px; font-weight: 700; text-align: center; }
+.install details {
+  background: var(--panel-2);
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+.install summary { font-weight: 800; cursor: pointer; }
+.install ol, .install p { margin: 8px 0 0; padding-left: 20px; line-height: 1.5; }
+.install p { padding-left: 0; }
+
+/* 홈 화면 앱(전체 화면)으로 열었을 때 노치/상태바 피하기 */
+@media (display-mode: standalone) {
+  #app { padding-top: max(20px, env(safe-area-inset-top)); }
+}

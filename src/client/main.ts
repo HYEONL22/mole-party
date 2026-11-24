@@ -9,6 +9,7 @@ import { lobbyScreen } from './screens/lobby';
 import { resultScreen } from './screens/result';
 import { startScreen } from './screens/start';
 import { cleanNickname, loadRoomSession } from './storage';
+import { registerServiceWorker } from './install';
 
 const root = document.getElementById('app')!;
 let cleanup: (() => void) | void;
@@ -76,4 +77,5 @@ async function boot() {
   go({ name: 'start' });
 }
 
+registerServiceWorker();
 void boot();
