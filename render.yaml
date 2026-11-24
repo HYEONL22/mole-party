@@ -1,0 +1,12 @@
+# Render 배포 설정 (Blueprint). 서버 1대가 화면과 게임 서버를 함께 제공한다.
+services:
+  - type: web
+    name: mole-party
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "22"

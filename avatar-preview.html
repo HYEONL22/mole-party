@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="ko">
+  <head><meta charset="UTF-8" /><title>Avatar gallery (dev)</title>
+  <style>body{background:#fff;margin:8px} .row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px} canvas{image-rendering:pixelated;border:1px solid #999}</style></head>
+  <body><div id="g"></div>
+  <script type="module">
+    import { avatarElement } from '/src/client/avatarRender.ts';
+    import { HAT_COLORS } from '/src/shared/avatarParts.ts';
+    const r = document.createElement('div'); r.className = 'row'; document.getElementById('g').append(r);
+    HAT_COLORS.forEach((_, i) => r.append(avatarElement({ hatColor: i, topColor: i }, 4)));
+  </script></body>
+</html>
